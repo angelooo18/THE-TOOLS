@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# learn — abre pi en el proyecto de aprendizaje (~/learning) dentro de tmux,
+# con el skill "teach" cargado en el system prompt (siempre activo).
+#
+# Uso:
+#   learn                 # abre pi en tmux: MiMo V2.6 Pro (visión) + thinking HIGH
+#   learn "Enseñame X"    # abre y envía el mensaje inicial
+#   learn --plain         # sin tmux (los subagentes no funcionan, el resto sí)
+#   learn --dry-run       # muestra el comando que se ejecutaría
+set -euo pipefail
+
+PROJECT="$HOME/learning"
+SKILL="$PROJECT/.pi/skills/teach/SKILL.md"
+SESSION="learn"
+
+# PATH garantizado (también al lanzar desde el escritorio, sin .bashrc)
+export PATH="$HOME/.local/bin:$HOME/.local/share/pi-node/node-v22.23.2-linux-x64/bin:$PATH"
+
+if [ ! -f "$SKILL" ]; then
+  echo "No se encontró el skill de enseñanza en $SKILL" >&2
+  exit 1
+fi
+
+# Flags propios de este lanzador (no se pasan a pi)
+PLAIN=0; DRY=0
+# Por defecto: modo fullscreen (scroll con rueda/trackpad sobre el transcript)
+TUI_MODE=1
+pi_args=()
+for a in "$@"; do
+  case "$a" in
+    --plain) PLAIN=1 ;;
+    --dry-run) DRY=1 ;;
+    --regular) TUI_MODE=0 ;;
+    *) pi_args+=("$a") ;;
+  esac
+done
+
+# pi --append-system-prompt <SKILL.md> hace que todo el skill viva en el
+# system prompt; --name pone el nombre de sesión de pi. El refuerzo de formato
+# (LaTeX obligatorio) se apénda con él — mismo mecanismo, sin tocar el skill.
+cmd="pi --append-system-prompt $(printf '%q' "$SKILL") --name $SESSION"
+FORMAT_FILE="$HOME/.pi/agent/learn-format.md"
+if [ -f "$FORMAT_FILE" ]; then
+  cmd="$cmd --append-system-prompt $(printf '%q' "$FORMAT_FILE")"
+fi
+# Modelo único: MiMo V2.6 Pro — visión nativa (texto/imagen/video/audio) y
+# thinking HIGH (MiMo no diferencia niveles de esfuerzo: "max" se recorta a "high").
+cmd="$cmd --model xiaomi/mimo-v2.6-pro:high"
+if [ "$TUI_MODE" = 1 ]; then
+  cmd="$cmd --tui-mode fullscreen"
+fi
+for a in "${pi_args[@]}"; do
+  cmd="$cmd $(printf '%q' "$a")"
+done
+
+if [ "$DRY" = 1 ]; then
+  echo "cd '$PROJECT' && exec $cmd"
+  exit 0
+fi
+
+if [ "$PLAIN" = 1 ]; then
+  exec bash -c "cd '$PROJECT' && exec $cmd"
+fi
+
+command -v tmux >/dev/null || { echo "tmux no está instalado ($HOME/.local/bin/tmux)"; exit 1; }
+
+if tmux has-session -t "$SESSION" 2>/dev/null; then
+  echo "La sesión '$SESSION' ya existe — adjuntando…" >&2
+fi
+# -c fija el directorio de trabajo de la sesión; -A adjunta si ya existe.
+exec tmux new -A -s "$SESSION" -c "$PROJECT" "$cmd"

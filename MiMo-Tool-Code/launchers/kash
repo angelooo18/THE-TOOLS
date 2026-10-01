@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# =============================================================================
+# KASH — Entorno de trabajo KA$H: sesión de pi dentro de tmux con subagentes
+#
+# - cwd = ~/kash → carga .pi/settings.json y .pi/agents/ del proyecto
+# - Sesión pi con ID rotativo por día: kash-YYYYMMDD (se crea si no existe).
+#   La rotación evita que el contexto crezca sin límite (el modelo se vuelve
+#   lento y tonto con contextos de 300K+ tokens). Dentro del mismo día la
+#   sesión se reanuda.
+# - Modelo orquestador: MiMo V2.6 Pro @ high thinking (provider xiaomi)
+#   (MiMo no diferencia niveles de esfuerzo de razonamiento: "max" se recorta
+#   a "high", y la API trata igual cualquier nivel != none)
+# - Árbol de delegación estricto (constitución en ~/kash/AGENTS.md):
+#   boss → leads (worker, coder) → leaves (scout, researcher, vision, helper).
+#   Ancho ilimitado, profundidad fija 3, delegación solo hacia abajo.
+#   delegate-guard (~/kash/.pi/extensions/) bloquea write/edit del boss;
+#   /boss-write lo desactiva si el usuario pide edición directa.
+# - Subagentes (~/kash/.pi/agents/): coder, worker, vision, researcher y
+#   helper = mimo-v2.6-pro; scout = mimo-v2.6-flash — todos @ high thinking
+# - Web search: DeepSeek nativo (web_search_20250305) con fallback
+#   DuckDuckGo/Google (independiente del modelo del agente)
+# - La sesión vieja DeepSeek (01a0742c-..., cwd ~) queda intacta en disco:
+#   cd ~ && pi --resume
+#
+# Uso:  kash                anexa o (re)inicia la sesión del día (kash-YYYYMMDD)
+#       kash --new          arranca una sesión pi nueva sin historial (si no hay
+#                           tmux vivo; con tmux vivo se anexa como siempre)
+#       kash --resume [id]  reanuda una sesión concreta (por defecto kash-mimo,
+#                           el histórico). Ej: kash --resume kash-20260927
+# =============================================================================
+
+set -euo pipefail
+
+SESSION_NAME="kash"
+PI_BIN="$(command -v pi)"
+KASH_PROJECT="$HOME/kash"
+WORKDIR="$KASH_PROJECT"
+
+MODEL="xiaomi/mimo-v2.6-pro"
+THINKING="high"
+# Modelos que cicla Ctrl+P en esta sesión
+MODELS_CYCLE="xiaomi/mimo-v2.6-pro"
+
+# ID de sesión rotativo por día (~/kash). --session-id la reabre o la crea.
+SESSION_ID="kash-$(date +%Y%m%d)"
+
+if [ ! -x "$PI_BIN" ]; then
+  echo "✗ No se encontró pi en el PATH" >&2
+  exit 1
+fi
+if [ ! -d "$KASH_PROJECT/.pi" ]; then
+  echo "✗ No existe $KASH_PROJECT/.pi" >&2
+  exit 1
+fi
+
+# Delay extra para shells de arranque lento en panes de subagentes
+export PI_SUBAGENT_SHELL_READY_DELAY_MS=1500
+# Browser (Playwright) activo desde el arranque: /browser on implícito
+# (un /browser off manual sigue ganando dentro de la sesión)
+export PI_BROWSER_ON=1
+# Los panes de subagentes heredan el env del SERVIDOR tmux, no el de pi:
+# fijar la variable globalmente para que llegue a todo pane que se abra
+tmux set-environment -g PI_BROWSER_ON 1 2>/dev/null || true
+
+# Si ya hay una sesión tmux "kash" viva → anexar; si el pane murió → recrear
+if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+  # Anti-zombie: si un pane del subagente quedó como shell huérfano
+  # (bash vivo sin pi dentro), el main puede quedar esperándolo para
+  # siempre. Limpiamos panes muertos/uzombies antes de anexar.
+  ZOMBIES=$(tmux list-panes -t "$SESSION_NAME" -F '#{pane_id}|#{pane_dead}|#{pane_current_command}' 2>/dev/null | grep -E '\|1\||\|bash$' || true)
+  if [ -n "$ZOMBIES" ]; then
+    echo "⊙ Panes zombies detectados, limpiando:"
+    for z in $ZOMBIES; do
+      pane="$z";
+      case "$pane" in
+        %*) tmux kill-pane -t "$pane" 2>/dev/null && echo "  cerrado $pane" || true ;;
+      esac
+    done
+  fi
+  if tmux list-panes -t "$SESSION_NAME" -F '#{pane_dead}' | grep -q '1'; then
+    tmux kill-session -t "$SESSION_NAME"
+  else
+    exec tmux attach-session -t "$SESSION_NAME"
+  fi
+fi
+
+# Sesión del día (--session-id la crea si no existe).
+# --new = sesión anónima nueva. --resume [id] = sesión concreta.
+SESSION_ARGS="--session-id '$SESSION_ID'"
+case "${1:-}" in
+  --new)    SESSION_ARGS="" ;;
+  --resume) SESSION_ARGS="--session-id '${2:-kash-mimo}'" ;;
+esac
+
+CMD="cd '$WORKDIR' && exec $PI_BIN $SESSION_ARGS --model '$MODEL' --thinking '$THINKING' --models '$MODELS_CYCLE'"
+
+tmux new-session -d -s "$SESSION_NAME" "$CMD"
+exec tmux attach-session -t "$SESSION_NAME"

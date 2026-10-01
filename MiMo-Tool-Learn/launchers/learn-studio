@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# learn-studio — abre pi (tmux) y Obsidian listos para partirlos en dos:
+#   Super+← para la ventana de pi, Super+→ para Obsidian (o al revés).
+set -euo pipefail
+export PATH="$HOME/.local/bin:$PATH"  # pi debe estar en el PATH (p. ej. vía .bashrc)
+
+# Obsidian (si ya está abierto con el vault, apps normalmente lo enfoca)
+nohup obsidian >/dev/null 2>&1 &
+
+# Ventana de terminal con el lanzador learn (tmux + pi con visión + think max)
+sleep 2
+# Detectar el terminal del sistema (Mint: xfce4-terminal vía x-terminal-emulator)
+TERM_BIN=""
+for t in x-terminal-emulator xfce4-terminal gnome-terminal; do
+  if command -v "$t" >/dev/null 2>&1; then TERM_BIN="$t"; break; fi
+done
+if [ -z "$TERM_BIN" ]; then
+  echo "No se encontró un emulador de terminal. Instala xfce4-terminal o ejecuta 'learn' manualmente." >&2
+  exit 1
+fi
+exec "$TERM_BIN" --disable-server --title "pi-learn" -e "$HOME/.local/bin/learn"

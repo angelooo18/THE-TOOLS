@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Learn (pi)
+Comment=Abrir pi en ~/learning con el skill de enseñanza cargado
+Exec=x-terminal-emulator --disable-server -T pi-learn -e {HOME}/.local/bin/learn
+Icon=utilities-terminal
+Terminal=false
+Categories=Education;Utility;
+StartupNotify=false

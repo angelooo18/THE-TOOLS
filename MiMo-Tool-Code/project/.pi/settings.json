@@ -1,0 +1,23 @@
+{
+  "defaultProvider": "xiaomi",
+  "defaultModel": "mimo-v2.6-pro",
+  "enabledModels": ["xiaomi/mimo-v2.6-pro"],
+  "compaction": {
+    "enabled": true,
+    "reserveTokens": 748000
+  },
+  "observational-memory": {
+    "chunkTokens": 5000,
+    "chunkOverlapTokens": 0,
+    "poolTargetTokens": 10000,
+    "consolidateAtPoolTokens": 20000,
+    "compactAtContextTokens": 150000,
+    "tailTokens": 20000,
+    "journeyTargetTokens": 1000,
+    "observerConcurrency": 4,
+    "models": {
+      "observer": { "provider": "xiaomi", "id": "mimo-v2.6-flash", "thinking": "low" },
+      "consolidator": { "provider": "xiaomi", "id": "mimo-v2.6-pro", "thinking": "medium" }
+    }
+  }
+}

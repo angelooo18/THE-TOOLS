@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Learn (pi + Obsidian)
+Comment=Pi para enseñar + Obsidian para leer LaTeX/markdown, en ventanas partidas
+Exec={HOME}/.local/bin/learn-studio
+Icon=utilities-terminal
+Terminal=false
+Categories=Education;Utility;
+StartupNotify=false
